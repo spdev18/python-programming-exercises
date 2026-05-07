@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Token Auth Hands-On</title>
+        <style>
+            body { font-family: sans-serif; padding: 20px; background-color: #f4f4f9; }
+            .container { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+            .section { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #ccc; }
+            input { width: 100%; padding: 8px; margin: 8px 0; box-sizing: border-box; }
+            button { width: 100%; padding: 10px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
+            button:hover { background-color: #218838; }
+            .btn-blue { background-color: #007bff; }
+            .btn-blue:hover { background-color: #0056b3; }
+            #message-box { padding: 10px; margin-bottom: 15px; border-radius: 4px; display: none; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h2 style="text-align: center;">User Authentication</h2>
+            
+            <!-- Here we show success or error messages -->
+            <div id="message-box"></div>
+
+            <!-- STEP 1: REGISTRATION FORM -->
+            <div class="section">
+                <h3>1. Register</h3>
+                <input type="email" id="reg-email" placeholder="Email Address">
+                <input type="password" id="reg-password" placeholder="Password">
+                <button onclick="registerUser()">Register</button>
+            </div>
+
+            <!-- STEP 2: LOGIN FORM -->
+            <div class="section">
+                <h3>2. Login</h3>
+                <input type="email" id="login-email" placeholder="Email Address">
+                <input type="password" id="login-password" placeholder="Password">
+                <button onclick="loginUser()" class="btn-blue">Login</button>
+            </div>
+
+            <!-- STEP 4: PROTECTED ROUTE -->
+            <div class="section" style="border-bottom: none;">
+                <h3>3. Access VIP Area</h3>
+                <p style="font-size: 12px; color: gray;">This requires a valid token.</p>
+                <button onclick="getProfile()" style="background-color: #6f42c1;">Get Protected Profile Data</button>
+                <div id="profile-data" style="margin-top: 15px; font-family: monospace; background: #eee; padding: 10px;">
+                    Awaiting data...
+                </div>
+                <button onclick="logout()" style="background-color: #dc3545; margin-top: 10px;">Logout (Delete Token)</button>
+            </div>
+
+        </div>
+
+        <script>
+            // The URL where your Python Flask server is running
+            const API_URL = "http://127.0.0.1:5000";
+
+            // Helper function to show messages on the screen
+            function showMessage(text, isError = false) {
+                const msgBox = document.getElementById('message-box');
+                msgBox.style.display = 'block';
+                msgBox.textContent = text;
+                msgBox.style.backgroundColor = isError ? '#f8d7da' : '#d4edda';
+                msgBox.style.color = isError ? '#721c24' : '#155724';
+            }
+
+            // ==========================================
+            // STEP 1: REGISTRATION
+            // ==========================================
+            async function registerUser() {
+                const email = document.getElementById('reg-email').value;
+                const password = document.getElementById('reg-password').value;
+
+                try {
+                    const response = await fetch(`${API_URL}/register`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: email, password: password })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        showMessage("Registration successful! You can now log in.");
+                    } else {
+                        showMessage(data.message, true);
+                    }
+                } catch (error) {
+                    showMessage("Server error. Is your Python backend running?", true);
+                }
+            }
+
+            // ==========================================
+            // STEP 2 & 3: LOGIN & SAVING THE TOKEN
+            // ==========================================
+            async function loginUser() {
+                const email = document.getElementById('login-email').value;
+                const password = document.getElementById('login-password').value;
+
+                try {
+                    const response = await fetch(`${API_URL}/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: email, password: password })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        // SUCCESS! We got the token.
+                        // We save it to the browser's LocalStorage. 
+                        localStorage.setItem('my_jwt_token', data.token);
+                        showMessage("Login successful! Token saved to browser.");
+                    } else {
+                        showMessage(data.message, true);
+                    }
+                } catch (error) {
+                    showMessage("Server error. Is your Python backend running?", true);
+                }
+            }
+
+            // ==========================================
+            // STEP 4: USING THE TOKEN FOR PROTECTED ROUTES
+            // ==========================================
+            async function getProfile() {
+                // Retrieve the token from LocalStorage
+                const token = localStorage.getItem('my_jwt_token');
+
+                if (!token) {
+                    showMessage("No token found! Please log in first.", true);
+                    return;
+                }
+
+                try {
+                    // Send the request WITH the token in the Headers
+                    const response = await fetch(`${API_URL}/profile`, {
+                        method: 'GET',
+                        headers: { 
+                            'Authorization': `Bearer ${token}` // This is how the server knows it's you!
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    const profileDiv = document.getElementById('profile-data');
+                    
+                    if (response.ok) {
+                        showMessage("Access Granted!");
+                        // Display the secret data
+                        profileDiv.innerHTML = `<strong>${data.message}</strong><br>Email: ${data.user_data.email}`;
+                    } else {
+                        showMessage(data.message, true);
+                        profileDiv.innerHTML = "Access Denied.";
+                    }
+                } catch (error) {
+                    showMessage("Error reaching server.", true);
+                }
+            }
+
+            // ==========================================
+            // LOGOUT (Destroying the Token)
+            // ==========================================
+            function logout() {
+                // To log out, we simply throw away the wristband!
+                localStorage.removeItem('my_jwt_token');
+                document.getElementById('profile-data').innerHTML = "Awaiting data...";
+                showMessage("Logged out. Token deleted from browser.");
+            }
+        </script>
+    </body>
+</html>
